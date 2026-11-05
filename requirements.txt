@@ -1,0 +1,7 @@
+PySide6>=6.11,<6.12
+SQLAlchemy>=2.0,<2.1
+qtawesome>=1.3,<2
+
+# build / test (optional)
+pyinstaller>=6.0
+pytest>=8.0

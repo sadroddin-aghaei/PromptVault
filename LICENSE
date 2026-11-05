@@ -1,0 +1,9 @@
+Prompt Vault
+© 2026 Sadroddin Aghaei. All Rights Reserved.
+
+No permission is granted to copy, modify, distribute or sublicense this software
+without the prior written consent of the copyright holder.
+
+Third-party components keep their own licenses: PySide6 (LGPLv3/GPL), SQLAlchemy (MIT),
+QtAwesome (MIT) with Material Design Icons (Apache-2.0), Vazirmatn font (SIL OFL 1.1,
+see assets/fonts/OFL.txt).
