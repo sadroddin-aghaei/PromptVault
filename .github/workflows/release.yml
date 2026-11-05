@@ -129,32 +129,22 @@ jobs:
           path: release/*-setup.exe
           retention-days: 30
 
-  # ---------------------------------------------------------------- macOS: Apple Silicon, Intel, Universal
+  # ---------------------------------------------------------------- macOS: Apple Silicon and Intel
   build-macos:
     needs: [meta, test]
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: apple-silicon, runner: macos-14,       arch: arm64 }
+          - { name: apple-silicon, runner: macos-15,       arch: arm64 }
           - { name: intel,         runner: macos-15-intel, arch: x86_64 }
-          - { name: universal,     runner: macos-14,       arch: universal2 }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
-        if: matrix.arch != 'universal2'
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
-      # setup-python ships single-architecture builds. The universal app needs python.org's universal2 build.
-      - name: Install universal2 Python
-        if: matrix.arch == 'universal2'
-        run: |
-          curl -fsSL -o python.pkg https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg
-          sudo installer -pkg python.pkg -target /
-          echo "PYBIN=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12" >> "$GITHUB_ENV"
 
       - name: Create virtualenv and install dependencies
         run: |
@@ -162,24 +152,6 @@ jobs:
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install -r requirements.txt
-
-      # Every binary in a universal2 app must contain both architectures. SQLAlchemy's compiled
-      # extensions are single-arch, so swap in its pure-Python wheel (identical behaviour).
-      - name: Use pure-Python SQLAlchemy and verify universal wheels
-        if: matrix.arch == 'universal2'
-        run: |
-          .venv/bin/python -m pip uninstall -y SQLAlchemy greenlet || true
-          .venv/bin/python -m pip download "SQLAlchemy>=2.0,<2.1" --no-deps --only-binary=:all: \
-            --platform macosx_10_13_x86_64 --python-version 3.12 --implementation cp -d pure
-          ls pure
-          ls pure/*none-any.whl
-          .venv/bin/python -m pip install --no-deps pure/*none-any.whl
-          find .venv/lib -name "*.so" -o -name "*.dylib" | head -400 | while read f; do
-            archs=$(lipo -archs "$f" 2>/dev/null || true)
-            if [[ -n "$archs" && "$archs" != *x86_64* || -n "$archs" && "$archs" != *arm64* ]]; then
-              echo "::warning::single-arch binary: $f ($archs)"
-            fi
-          done
 
       - name: Build .icns icon
         run: |
@@ -191,8 +163,6 @@ jobs:
           iconutil -c icns icon.iconset -o assets/icons/promptvault.icns
 
       - name: Build .app
-        env:
-          PV_ARCH: ${{ matrix.arch == 'universal2' && 'universal2' || '' }}
         run: python -m PyInstaller --noconfirm --clean PromptVault.spec
 
       - name: Verify architecture and ad-hoc sign
@@ -202,7 +172,6 @@ jobs:
           ARCHS=$(lipo -archs "$BIN")
           echo "Executable architectures: $ARCHS"
           case "${{ matrix.arch }}" in
-            universal2) [[ "$ARCHS" == *x86_64* && "$ARCHS" == *arm64* ]] || { echo "::error::not universal"; exit 1; } ;;
             arm64)      [[ "$ARCHS" == "arm64" ]] || { echo "::error::expected arm64"; exit 1; } ;;
             x86_64)     [[ "$ARCHS" == "x86_64" ]] || { echo "::error::expected x86_64"; exit 1; } ;;
           esac
@@ -216,15 +185,6 @@ jobs:
           export PROMPT_VAULT_HOME="$RUNNER_TEMP/pv-smoke"
           "dist/Prompt Vault.app/Contents/MacOS/PromptVault" --smoke-test
           test -f "$PROMPT_VAULT_HOME/promptvault.db"
-
-      - name: Smoke test the Intel slice under Rosetta (universal only)
-        if: matrix.arch == 'universal2'
-        continue-on-error: true
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: |
-          export PROMPT_VAULT_HOME="$RUNNER_TEMP/pv-smoke-x86"
-          arch -x86_64 "dist/Prompt Vault.app/Contents/MacOS/PromptVault" --smoke-test
 
       - name: Create DMG
         run: |
@@ -268,7 +228,6 @@ jobs:
           | Windows 11 · ARM64 | `…windows-arm64-setup.exe` (or `-portable.zip`) |
           | macOS · Apple Silicon (M1+) | `…macos-apple-silicon.dmg` |
           | macOS · Intel | `…macos-intel.dmg` |
-          | macOS · Universal (both) | `…macos-universal.dmg` |
 
           Verify downloads with `SHA256SUMS.txt`.
 
